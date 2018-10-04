@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="author" content="Julia Lister">
+		<title>Labyrinth: Attack of the Goblin King</title>
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+		<!--I did not write the code in the victor.js file. http://victorjs.org/ Open Source vector maths library-->
+		<script src="victor.js" type="text/javascript"></script> 
+		<link rel="stylesheet" type="text/css" href="gameStyle.css">
+		<script>
+			var ctx;
+			var player;
+			var boss;
+			var bullets = [];
+			var orbs = [];
+			var controller; //handles player movement
+			var win;
+			start_bgm = new Audio('start_bgm.mp3');
+			start_bgm.loop = true;
+			bgm = new Audio('bgm.mp3');
+			bgm.volume = 0.1;
+			bgm.loop = true;
+			
+			//background img
+			labyrinth = document.createElement("img");
+			labyrinth.setAttribute("src", "labyrinth.jpg");
+			
+			//----------------------
+			var CANVASHEIGHT = 630;
+			var CANVASWIDTH = 960;
+			//----------------------
+			
+			window.onload = function()
+			{
+				$('.hidden').css('display', 'none'); //hide all game elements
+				start_bgm.play();
+				document.getElementById("start").onclick = function(){ //if start was clicked, start the game
+					startGame();
+				}; 
+			};
+			
+			function startGame(){
+				//show game elements and hide start/end elements
+				document.getElementById("image").style.display="none";
+				document.getElementById("start").style.display="none";
+				document.getElementById("videoPlayer").style.visibility = "hidden"; 
+				$('.hidden').css('display', 'block');
+				//Reset everything
+				win = false;
+				ctx = document.getElementById("theCanvas").getContext("2d");
+				bullets = [];
+				orbs = [];
+				ctx.clearRect(0,0,CANVASWIDTH,CANVASHEIGHT);
+				boss = new Boss();
+				player = new Player(100, 550);
+				player.health.value = playerHealth.max;
+				boss.health.value = bossHealth.max;
+				draw();
+				//Event listeners and intervals
+				document.getElementById("videoPlayer").pause();
+				start_bgm.pause();
+				bgm.play();
+				document.getElementById("theCanvas").addEventListener("click", getClickPosition, false);
+				window.addEventListener("keydown", controller.keyListener);
+				window.addEventListener("keyup", controller.keyListener);
+				drawInterval = setInterval(draw, 45);
+				spawningOrbs = setInterval(spawnOrb, 1300);
+			}
+			
+			class Boss
+			{
+				constructor()
+				{
+					this.x_pos = 20; //x
+					this.y_pos = 0; //y
+					this.x = 430; //hitbox
+					this.y = 136; //hitbox
+					this.width = 120; //hitbox
+					this.height = 130; //hitbox
+					this.img = document.createElement("img");
+					this.img.setAttribute("src", "jareth.png");
+					this.img.setAttribute("id", "boss");
+					this.health = document.getElementById("bossHealth");
+					this.hand = 'left';
+				}
+			}
+			
+			class Orb
+			{
+				constructor(x, y)
+				{
+					this.x = x;
+					this.y = y;
+					this.height = 30;
+					this.width = 30;
+					this.speed = 5;
+					this.direction = (new Victor(player.x, player.y).subtract(new Victor(this.x, this.y))).normalize();
+					this.img = document.createElement("img");
+					this.img.setAttribute("src", "orb.png_c200");
+					this.img.setAttribute("id", "orb");
+				}
+			}
+			
+			class Player
+			{
+				constructor(x, y)
+				{
+					this.x = x;
+					this.y = y;
+					this.height = 50;
+					this.width = 50;
+					this.jumping = true;
+					this.x_velocity = 1.2;
+					this.y_velocity = 0;
+					this.speed = 4;
+					this.img = document.createElement("img");
+					this.img.setAttribute("src", "square.jpg");
+					this.img.setAttribute("id", "player");
+					this.health = document.getElementById("playerHealth");
+				}
+			}
+			
+			class Bullet
+			{
+				constructor()
+				{
+					this.x = player.x;
+					this.y = player.y;
+					this.height = 10;
+					this.width = 10;
+					this.speed = 7;
+					this.direction = (new Victor(xPosition, yPosition).subtract(new Victor(player.x, player.y))).normalize();
+					this.img = document.createElement("img");
+					this.img.setAttribute("src", "circle.png");
+				}
+			}
+			
+			//Currently WASD
+			//----------------
+			RIGHT = 68; //39
+			LEFT = 65; //37
+			UP = 87; //38
+			//----------------
+			
+			controller = {
+				left:false,
+				right:false,
+				up:false,
+				keyListener:function(event){
+					var key_state = (event.type == "keydown")?true:false;
+					switch(event.keyCode){
+					  case LEFT:
+						console.log("left");
+						controller.left = key_state;
+					  break;
+					  case UP:
+						controller.up = key_state;
+					  break;
+					  case RIGHT:
+						controller.right = key_state;
+					  break;
+					}
+				}
+			};
+			
+			function draw()
+			{
+				ctx.clearRect(0,0,CANVASWIDTH,CANVASHEIGHT); //clear
+				ctx.drawImage(labyrinth,0,0,CANVASWIDTH,CANVASHEIGHT); //background
+				ctx.drawImage(boss.img,boss.x_pos,boss.y_pos,CANVASHEIGHT+CANVASHEIGHT/2,CANVASHEIGHT); //boss
+				ctx.drawImage(player.img,player.x,player.y,player.width,player.height); //player
+				
+				if (controller.up && player.jumping == false){
+					player.y_velocity -= 20;
+					player.jumping = true;
+				}
+				if (controller.left){
+					player.x_velocity -= 0.5;
+				}
+				if (controller.right){
+					player.x_velocity += 0.5;
+				}
+
+				//Player movement
+				player.y_velocity += 1.5;// gravity
+				player.x += player.speed * player.x_velocity;
+				player.y += player.y_velocity;
+				player.x_velocity *= 0.9;// friction
+				player.y_velocity *= 0.9;// friction
+  				checkPlayerBoundaries();
+
+				//bullet movement
+				var index=0;
+				bullets.forEach(function(bullet){
+					ctx.drawImage(bullet.img,bullet.x+16,bullet.y+16,bullet.width,bullet.height);
+					bullet.x += bullet.direction.x * bullet.speed;
+					bullet.y += bullet.direction.y * bullet.speed;
+					bullet.speed *= 1.1;
+					checkBulletCollisions(bullet, index);
+					//this code has bugs
+						//if(outOfBounds(bullet)){
+						//	bullets.splice(index,1);
+						//}
+					index++;
+				});
+				
+				//orb movement
+				index = 0;
+				orbs.forEach(function(orb){
+					ctx.drawImage(orb.img,orb.x,orb.y,70,70);
+					orb.x += orb.direction.x * orb.speed;
+					orb.y += orb.direction.y * orb.speed;
+					checkOrbCollisions(orb, index);
+					//this code has bugs
+						//if(outOfBounds(orb)){
+						//	bullets.splice(index,1);
+						//}
+					index++;
+				});
+				
+				//to test boss hitbox:
+				//ctx.strokeRect(boss.x, boss.y, boss.width, boss.height);
+			}
+			
+			//spawns orbs, alternating between left and right sides
+			function spawnOrb(){
+				if(boss.hand == 'left'){
+					orbs.push(new Orb(140, 300));
+					boss.hand = 'right';
+				}
+				else if(boss.hand == 'right'){
+					orbs.push(new Orb(740, 300));
+					boss.hand = 'left';
+				}
+			}
+			
+			//this code has bugs
+				/*function outOfBounds(object){
+					if (object.y > CANVASHEIGHT - object.height || object.y < - object.height
+					|| object.x < - object.width || object.x > CANVASWIDTH){ 
+						return true;
+					}
+				}*/
+			
+			function checkPlayerBoundaries(){	
+				if (player.y > CANVASHEIGHT - player.height){ // if player is falling below floor line
+					player.jumping = false;
+					player.y = CANVASHEIGHT - player.height;
+					player.y_velocity = 0;
+				}
+				if (player.x < - player.width){ // if player goes past left boundary
+					player.x = CANVASWIDTH;
+				} 
+				else if (player.x > CANVASWIDTH){ // if player goes past right boundary
+					player.x = - player.width;
+				}
+			}   
+
+			//got help with this function from https://www.kirupa.com/html5/getting_mouse_click_position.htm
+			//Get coordinates of the mouse where it clicks within the canvas
+			function getClickPosition(e){
+				xPosition = e.clientX - 8;
+				yPosition = e.clientY - 8;
+				//console.log(xPosition + ", " + yPosition);
+				//shoot bullet from player position to mouse click position
+				bullets.push(new Bullet());
+			}
+			
+			function checkBulletCollisions(bullet, index){
+				var counter = 0;
+				orbs.forEach(function(orb){
+					if(collision(bullet, orb)){
+						orbs.splice(counter,1);
+						bullets.splice(index,1);
+					}
+					else if(collision(bullet, boss)){
+						boss.health.value -= 1;
+						ctx.fillStyle = "white";
+						ctx.fillRect(0,0,CANVASWIDTH,CANVASHEIGHT);
+						console.log(boss.health.value);
+						bullets.splice(index,1);
+						if(boss.health.value <= 0){
+							win = true;
+							gameOver();
+						}
+					}
+					counter++;
+				});
+			}
+			
+			function checkOrbCollisions(orb, index){
+				if(collision(player, orb)){
+					player.health.value -= 1;
+					ctx.fillStyle = "red";
+					ctx.fillRect(0,0,CANVASWIDTH,CANVASHEIGHT);
+					if(player.health.value <= 0){
+						gameOver();
+					}
+					orbs.splice(index,1);
+				}
+			}
+			
+			function collision(object1, object2){
+				if (object1.x < object2.x + object2.width  && object1.x + object1.width  > object2.x &&
+					object1.y < object2.y + object2.height && object1.y + object1.height > object2.y){
+					//objects are touching
+					return true;
+				}
+			}
+			
+			function gameOver(){
+				//clear intervals
+				clearInterval(spawningOrbs);
+				clearInterval(drawInterval);
+				ctx.clearRect(0,0,CANVASWIDTH,CANVASHEIGHT);
+				bgm.pause();
+				//hide game elements and show game over elements
+				document.getElementById("theCanvas").style.display="none";
+				$('.hidden').css('display', 'none');
+				if(!win){				
+					document.getElementById("image").src = "gameOver.png";
+					document.getElementById("videoPlayer").innerHTML = "<source id='video' src='notFair.mp4' type='video/mp4'>";
+				}
+				else{
+					document.getElementById("image").src = "youWin.png";
+					document.getElementById("videoPlayer").innerHTML = "<source id='video' src='noPower.mp4' type='video/mp4'>";
+				}
+				document.getElementById("image").style.display="block";
+				document.getElementById("videoPlayer").style.visibility = "visible"; 
+				document.getElementById("videoPlayer").load();
+				document.getElementById("start").innerHTML="<span>Play Again</span>";
+				document.getElementById("start").style.display="block";
+			}
+		</script>
+	</head>
+	<body>
+			<canvas class = "hidden" id = "theCanvas" width = "960px" height = "630px" style = "border:4px solid black"></canvas>
+			<div>
+				<label class = "hidden unselectable"><b>Player: </b></label>
+				<progress class = "hidden" id="playerHealth" value="5" max="5"></progress>
+			</div>
+			<div>
+				<label class = "hidden unselectable"><b>Boss: </b></label>
+				<progress class = "hidden" id="bossHealth" value="250" max="250"></progress>
+			</div>
+			<img id="image" src="startScreen.png">
+			<video id="videoPlayer" width="320" height="240" autoplay>
+			</video> 
+			<br>
+			<button class="button" id="start" style="vertical-align:middle"><span>Play</span></button>		
+	</body>
+</html>
